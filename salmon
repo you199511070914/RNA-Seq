@@ -1,0 +1,50 @@
+rm(list = ls())
+options(stringsAsFactors = F)
+library(clusterProfiler)
+dir <- "D:/我的文件/Documents/salmon"
+list.files(dir)
+sample <- paste0("SRR3418",c(105,119,106,120),"_trimmed_quant")
+files <- file.path(dir,sample,"quant.sf")
+#names(files) <- paste0("sample",c(1:4))
+names(files) <- c("SRR3418105","SRR3418119","SRR3418106","SRR3418120")
+all(file.exists(files))
+library(AnnotationHub)
+ah <- AnnotationHub()
+ath <- query(ah,"Arabidopsis thaliana")
+head(ath)
+ath_tx <- ath[["AH52247"]]
+#ath_tx <- ath[['AH79569']]
+columns(ath_tx)
+k <- keys(ath_tx,keytype = "GENEID")
+df <- select(ath_tx,keys = k,keytype = "GENEID",columns = "TXNAME")
+tx2gene <- df[,2:1]
+library("tximport")
+library("readr")
+txi <- tximport(files,type = "salmon",tx2gene = tx2gene)
+library("DESeq2")
+#sampleTable <- data.frame(condition=factor(rep(c("exp","ctrl"),each=2),c("ctrl","exp")))
+sampleTable <- data.frame(condition=factor(c("ctrl","ctrl","exp","exp"),levels=c("ctrl","exp")))
+sampleTable
+rownames(sampleTable) <- colnames(txi$counts)
+dds <- DESeqDataSetFromTximport(txi,sampleTable,~condition)
+library(ggplot2)
+vsd <- vst(dds,blind = FALSE)  #rld <- rlog(dds, blind=FALSE)
+dds <- DESeq(dds)
+resultsNames(dds)
+res <- results(dds)
+plotMA(res,ylim=c(-2,2))
+res <- res[order(res$pvalue),]
+summary(res)
+mcols(res,use.names=TRUE)
+#plot(res$log2FoldChange,res$pvalue)
+logFC <- res$log2FoldChange
+FDR <- res$padj
+plot(logFC, -1*log10(FDR), col=ifelse(FDR<=0.01, "red", "black"),xlab="logFC", ylab="-1*log1o(FDR)",
+     main="Volcano plot", pch=".")
+plotPCA(vsd,intgroup=c("condition"))
+library("pheatmap")
+pheatmap(assay(vsd)[1:300,1:4])
+rloos <- assay(vsd)
+pearson_cor <- as.matrix(cor(rloos, method="pearson"))
+heatmap(pearson_cor,margins = c(11,11),display_numbers=T,symm = T)
+plotPCA(vsd, intgroup=c("condition"))
