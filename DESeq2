@@ -1,1 +1,2 @@
-
+#导入R包
+library("DESeq2")
