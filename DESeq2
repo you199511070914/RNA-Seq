@@ -1,2 +1,27 @@
+#安装
+if (!requireNamespace("BiocManager"))
+install.packages("BiocManager")
+BiocManager::install("DEseq2")
+
 #导入R包
 library("DESeq2")
+
+dds <- DESeqDataSetFromMatrix(mycounts, colData, design= ~ condition)
+dds <- DESeq(dds)
+res = results(dds, contrast=c("condition", "control", "treat"))
+#或下面命令
+res= results(dds)
+res = res[order(res$pvalue),]
+
+head(res)
+summary(res)
+#所有结果先进行输出
+write.csv(res,file="All_results.csv")
+table(res$padj<0.05)
+#提取差异基因
+diff_gene_deseq2 <-subset(res, padj < 0.05 & abs(log2FoldChange) > 1)
+#或
+diff_gene_deseq2 <-subset(res,padj < 0.05 & (log2FoldChange > 1 | log2FoldChange < -1))
+dim(diff_gene_deseq2)
+head(diff_gene_deseq2)
+write.csv(diff_gene_deseq2,file= "DEG_treat_vs_control.csv")
