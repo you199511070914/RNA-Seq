@@ -34,13 +34,25 @@ condition
 colData <- data.frame(row.names=colnames(row_count_filt), condition)
 colData
 dds <- DESeqDataSetFromMatrix(countData=row_count_filt, colData=colData, design= ~ condition)
+dds_filter <- dds[ rowSums(counts(dds))>1, ] ##将所有样本基因表达量之和小于1的基因过滤掉+*
 library(DESeq2)
 dds <- DESeq(dds)
-dds
+resultsNames(dds)
 res <- results(dds,name="condition_treat_vs_control")  #res = results(dds, contrast=c("condition", "control", "treat"))，res <- res[order(res$pvalue),]
-mcols(res, use.names = TRUE)
+res <- res[order(res$padj), ]
+
+resDF = as.data.frame(res)
+resDF$gene_id = rownames(resDF)
+resDF = resDF[ ,c(7,1,2,3,4,5,6)]
+DEG_list <- subset(resDF,padj<0.05 &abs(log2FoldChange)>1)
+write.table(DEG_list,file = "DEG_list",row.names = F,sep = "\t",quote = F)
+write.table(resDF,file = "DEG.tab",sep = "\t",quote = FALSE,row.names = FALSE)
+
+#mcols(res, use.names = TRUE)
 head(res)
 summary(res)
+
+res <- lfcShrink(dds, coef="condition_treat_vs_control", type="apeglm")
 
 #所有结果先进行输出
 write.csv(res,file="All_results.csv")
@@ -64,15 +76,29 @@ with(res[topGene, ], {
   text(baseMean, log2FoldChange, topGene, pos=2, col="dodgerblue")
 })
 
-perl -F',' -alne '$F[5]=~s/\r//;if(/baseMean/){print "gene\tlog2FoldChange\tpadj\tsignificant"} else{unless(/NA/){if($F[2] >=1 && $F[5]<0.05){print "$F[0]\t$F[2]\t$F[5]\tup"} 
+火山图
+perl -F',' -alne '$F[5]=~s/\r//;if(/baseMean/){print "gene\tlog2FoldChange\tpadj\tsignificant"} else{unless(/NA/){if($F[2] >=1 && $F[5]<0.05){print "$F[0]\t$F[2]\t$F[5]\tup"} \ 
 elsif($F[2]<=-1 && $F[5]<0.05){print "$F[0]\t$F[2]\t$F[5]\tdown"} else{print "$F[0]\t$F[2]\t$F[5]\tno"}}}' DEG_treat_vs_control.csv >volcano.txt
 
-火山图
 data <-read.table(file="volcano.txt",header = TRUE, row.names =1,sep = "\t")
 volcano <-ggplot(data = data,aes(x=log2FoldChange,y= -1*log10(padj)))+geom_point(aes(color=significant))+
 scale_color_manual(values = c("red","grey","blue")) + labs(title="Volcano_Plot",x=expression((log[2](FC)), y=expression(-log[10](padj)) ))+
 geom_hline(yintercept=1.3,linetype=4)+geom_vline(xintercept=c(-1,1),linetype=4)
 volcano
+
+p <- ggplot(data=data, aes(x=logFC, y=-log10(adj.P.Val),color=regulated)) + 
+     geom_point(alpha=0.5, size=1.8) + theme_set(theme_set(theme_bw(base_size=20))) + 
+     xlab("log2FC") + ylab("-log10(FDR)") +scale_colour_manual(values = c('blue','black','red'))
+p
+
+vsd <- vst(dds,blind=FALSE)   #rld <- rlog(dds,blind=FALSE) 数据集小于30 ->rlog,数据集大于30 ->vst
+pcaData <- plotPCA(vsd,intgroup=c("condition"),returnData=TRUE)
+percentVar <- round(100*attr(pcaData,"percentVar"))
+ggplot(pcaData,aes(PC1,PC2,color=condition))+geom_point(size=3)+
+xlab(paste0("PC1:",percentVar[1],"% variance"))+
+xlab(paste0("PC2:",percentVar[2],"% variance"))+
+coord_fixed()
+plotPCA(rld,intgroup=c("condition"))
 
 gene聚类热图
 library(genefilter)
