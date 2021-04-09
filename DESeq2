@@ -1,3 +1,6 @@
+1.DESeq2包
+
+dds$condition <- factor(dds$condition, levels = c("untreated","treated"))
 #安装
 if (!requireNamespace("BiocManager"))
 install.packages("BiocManager")
@@ -5,23 +8,144 @@ BiocManager::install("DEseq2")
 
 #导入R包
 library("DESeq2")
-
 dds <- DESeqDataSetFromMatrix(mycounts, colData, design= ~ condition)
 dds <- DESeq(dds)
-res = results(dds, contrast=c("condition", "control", "treat"))
-#或下面命令
-res= results(dds)
-res = res[order(res$pvalue),]
 
+
+options(stringsAsFactors = FALSE)
+C_1 <- read.table("D:/R语言生信下游分析/cpap/C_1.count.tab",sep = "\t",col.names = c("gene_id","C_1"))
+C_12 <- read.table("D:/R语言生信下游分析/cpap/C_12.count.tab",sep = "\t",col.names = c("gene_id","C_1"))
+C_12 <- read.table("D:/R语言生信下游分析/cpap/C_12.count.tab",sep = "\t",col.names = c("gene_id","C_12"))
+S_2 <- read.table("D:/R语言生信下游分析/cpap/S_2.count.tab",sep = "\t",col.names = c("gene_id","S_2"))
+S_11 <- read.table("D:/R语言生信下游分析/cpap/S_11.count.tab",sep = "\t",col.names = c("gene_id","S_11"))
+row_count <- merge(C_1,C_12,by="gene_id")
+row_count <- merge(row_count,S_2,by="gene_id")
+row_count <- merge(row_count,S_11,by="gene_id")
+head(row_count)
+row_count_filt <- row_count[-1:-5,]
+head(row_count_filt)
+tail(row_count_filt)
+rownames(row_count_filt) <- row_count_filt[,1]
+head(row_count_filt)
+row_count_filt <- row_count_filt[,-c(1)]
+head(row_count_filt)
+condition <- factor(c(rep("control",2),rep("treat",2)), levels = c("control","treat"))
+condition
+colData <- data.frame(row.names=colnames(row_count_filt), condition)
+colData
+dds <- DESeqDataSetFromMatrix(countData=row_count_filt, colData=colData, design= ~ condition)
+library(DESeq2)
+dds <- DESeq(dds)
+dds
+res <- results(dds,name="condition_treat_vs_control")  #res = results(dds, contrast=c("condition", "control", "treat"))，res <- res[order(res$pvalue),]
+mcols(res, use.names = TRUE)
 head(res)
 summary(res)
+
 #所有结果先进行输出
 write.csv(res,file="All_results.csv")
 table(res$padj<0.05)
 #提取差异基因
 diff_gene_deseq2 <-subset(res, padj < 0.05 & abs(log2FoldChange) > 1)
+dim(diff_gene_deseq2)
+head(diff_gene_deseq2)
 #或
 diff_gene_deseq2 <-subset(res,padj < 0.05 & (log2FoldChange > 1 | log2FoldChange < -1))
 dim(diff_gene_deseq2)
 head(diff_gene_deseq2)
-write.csv(diff_gene_deseq2,file= "DEG_treat_vs_control.csv")
+write.csv(diff_gene_deseq2,file= "DEG_treat_vs_control.csv",row.names = F)
+
+library(ggplot2)
+MA图
+plotMA(res, ylim = c(-5,5))
+topGene <- rownames(res)[which.min(res$padj)]
+with(res[topGene, ], {
+  points(baseMean, log2FoldChange, col="dodgerblue", cex=2, lwd=2)
+  text(baseMean, log2FoldChange, topGene, pos=2, col="dodgerblue")
+})
+
+perl -F',' -alne '$F[5]=~s/\r//;if(/baseMean/){print "gene\tlog2FoldChange\tpadj\tsignificant"} else{unless(/NA/){if($F[2] >=1 && $F[5]<0.05){print "$F[0]\t$F[2]\t$F[5]\tup"} 
+elsif($F[2]<=-1 && $F[5]<0.05){print "$F[0]\t$F[2]\t$F[5]\tdown"} else{print "$F[0]\t$F[2]\t$F[5]\tno"}}}' DEG_treat_vs_control.csv >volcano.txt
+
+火山图
+data <-read.table(file="volcano.txt",header = TRUE, row.names =1,sep = "\t")
+volcano <-ggplot(data = data,aes(x=log2FoldChange,y= -1*log10(padj)))+geom_point(aes(color=significant))+
+scale_color_manual(values = c("red","grey","blue")) + labs(title="Volcano_Plot",x=expression((log[2](FC)), y=expression(-log[10](padj)) ))+
+geom_hline(yintercept=1.3,linetype=4)+geom_vline(xintercept=c(-1,1),linetype=4)
+volcano
+
+gene聚类热图
+library(genefilter)
+library(pheatmap)
+rld <- rlogTransformation(dds,blind = F)
+#生成一个mm.DESeq2.pseudo.counts.csv矩阵
+write.csv(assay(rld),file="mm.DESeq2.pseudo.counts.csv")   
+#head了前20个差异较大的基因
+topVarGene <- head(order(rowVars(assay(rld)),decreasing = TRUE),20) 
+mat  <- assay(rld)[ topVarGene, ]
+# mat <- mat - rowMeans(mat) 减去一个平均值，让数值更加集中。得到的是第二个图。
+anno <- as.data.frame(colData(rld)[,c("condition","sizeFactor")])
+pheatmap(mat, annotation_col = anno)
+
+resultsNames(dds)
+library(ggplot2)
+plotCounts(dds,gene=which.min(res$padj),intgroup="condition",returnData=TRUE)
+library("pheatmap")
+select<-order(rowMeans(counts(dds,normalized=TRUE)),decreasing=TRUE)[1:30]
+df<-as.data.frame(colData(dds)[,c("condition","sizeFactor")])
+ntd<-normTransform(dds)
+pheatmap(assay(ntd)[select,],cluster_rows=FALSE,show_rownames=T,cluster_cols=FALSE,annotation_col=df,)
+
+
+
+2.salmon包
+rm(list = ls())
+options(stringsAsFactors = F)
+library(clusterProfiler)
+dir <- "D:/我的文件/Documents/salmon"
+list.files(dir)
+sample <- paste0("SRR3418",c(105,119,106,120),"_trimmed_quant")
+files <- file.path(dir,sample,"quant.sf")
+#names(files) <- paste0("sample",c(1:4))
+names(files) <- c("SRR3418105","SRR3418119","SRR3418106","SRR3418120")
+all(file.exists(files))
+library(AnnotationHub)
+ah <- AnnotationHub()
+ath <- query(ah,"Arabidopsis thaliana")
+head(ath)
+ath_tx <- ath[["AH52247"]]
+#ath_tx <- ath[['AH79569']]
+columns(ath_tx)
+k <- keys(ath_tx,keytype = "GENEID")
+df <- select(ath_tx,keys = k,keytype = "GENEID",columns = "TXNAME")
+tx2gene <- df[,2:1]
+library("tximport")
+library("readr")
+txi <- tximport(files,type = "salmon",tx2gene = tx2gene)
+library("DESeq2")
+#sampleTable <- data.frame(condition=factor(rep(c("exp","ctrl"),each=2),c("ctrl","exp")))
+sampleTable <- data.frame(condition=factor(c("ctrl","ctrl","exp","exp"),levels=c("ctrl","exp")))
+sampleTable
+rownames(sampleTable) <- colnames(txi$counts)
+dds <- DESeqDataSetFromTximport(txi,sampleTable,~condition)
+library(ggplot2)
+vsd <- vst(dds,blind = FALSE)  #rld <- rlog(dds, blind=FALSE)
+dds <- DESeq(dds)
+resultsNames(dds)
+res <- results(dds)
+plotMA(res,ylim=c(-2,2))
+res <- res[order(res$pvalue),]
+summary(res)
+mcols(res,use.names=TRUE)
+#plot(res$log2FoldChange,res$pvalue)
+logFC <- res$log2FoldChange
+FDR <- res$padj
+plot(logFC, -1*log10(FDR), col=ifelse(FDR<=0.01, "red", "black"),xlab="logFC", ylab="-1*log1o(FDR)",
+     main="Volcano plot", pch=".")
+plotPCA(vsd,intgroup=c("condition"))
+library("pheatmap")
+pheatmap(assay(vsd)[1:300,1:4])
+rloos <- assay(vsd)
+pearson_cor <- as.matrix(cor(rloos, method="pearson"))
+heatmap(pearson_cor,margins = c(11,11),display_numbers=T,symm = T)
+plotPCA(vsd, intgroup=c("condition"))
