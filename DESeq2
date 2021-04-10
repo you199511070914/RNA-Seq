@@ -28,13 +28,52 @@ tail(row_count_filt)
 rownames(row_count_filt) <- row_count_filt[,1]
 head(row_count_filt)
 row_count_filt <- row_count_filt[,-c(1)]
+row_count_filt <- row_count_filt[apply(row_count_filt,1,function(x) sum(x > 1) > 1),] #先判断值是否为0，得到逻辑值，再取和，判断0的个数是否小于3
 head(row_count_filt)
+
+绘制样本表达分布箱线图
+exprSet <- row_count_filt[1:6,1:6]
+data <- data.frame(expression=c(exprSet),sample=rep(colnames(exprSet),each=nrow(exprSet)))
+p <- ggplot(data = data,aes(x=sample,y=expression,fill=sample))
+p1 <- p + geom_boxplot() + theme(axis.text.x = element_text(angle = 90)) + xlab(NULL) + ylab("log2(CPM+1)")
+p1
+# 样本表达总体分布-小提琴图
+p2 <- p + geom_violin() + theme(axis.text = element_text(size = 12),axis.text.x = element_text(angle = 90)) + xlab(NULL) + ylab("log2(CPM+1)")
+p2
+# 样本表达总体分布-概率密度分布图
+m <- ggplot(data=data, aes(x=expression))
+p3 <- m +  geom_density(aes(fill=sample, colour=sample),alpha = 0.2) + xlab("log2(CPM+1)")
+p3
+# 使用500个基因的表达量来做相关性图
+library(corrplot)
+dim(exprSet)
+
+# 计算相关性
+M <- cor(exprSet)  #M是一个对称矩阵
+g <- corrplot(M,order = "AOE",addCoef.col = "white")
+##可视化corrplot
+corrplot(M,order = "AOE",type="upper",tl.pos = "d")
+corrplot(M,add=TRUE, type="lower", method="number",order="AOE",diag=FALSE,tl.pos="n", cl.pos="n")
+
+# 绘制样本相关性的热图
+anno <- data.frame(sampleType=group_list)  ##最重要的地方就是矩阵的行名是数据框的列名
+rownames(anno) <- colnames(exprSet)
+anno
+p <- pheatmap::pheatmap(M,display_numbers = T,annotation_col = anno,fontsize = 11,cellheight = 28,cellwidth = 28)
+p
+查看样本相关性并采用热图展示
+expcor <- cor(row_count_filt, method = "spearman")
+head(expcor)
+pheatmap::pheatmap(expcor, clustering_method = "average",
+                   treeheight_row = 0,treeheight_col = 0,
+                   display_numbers = T)
+
 condition <- factor(c(rep("control",2),rep("treat",2)), levels = c("control","treat"))
 condition
 colData <- data.frame(row.names=colnames(row_count_filt), condition)
 colData
 dds <- DESeqDataSetFromMatrix(countData=row_count_filt, colData=colData, design= ~ condition)
-dds_filter <- dds[ rowSums(counts(dds))>1, ] ##将所有样本基因表达量之和小于1的基因过滤掉+*
+dds_filter <- dds[ rowSums(counts(dds))>1, ] #### 过滤低表达基因,将所有样本基因表达量之和小于1的基因过滤掉+*
 library(DESeq2)
 dds <- DESeq(dds)
 resultsNames(dds)
@@ -60,6 +99,42 @@ table(res$padj<0.05)
 #提取差异基因
 diff_gene_deseq2 <-subset(res, padj < 0.05 & abs(log2FoldChange) > 1)
 dim(diff_gene_deseq2)
+
+火山图
+DEG <- as.data.frame(res)
+DESeq2_DEG <- na.omit(DEG)
+diff <- subset(DESeq2_DEG,pvalue < 0.05) #先筛选P值
+up <- subset(diff,log2FoldChange > 2) #上调
+down <- subset(diff,log2FoldChange < -2) #下调
+DEG_data <- DESeq2_DEG
+DEG_data$logP <- -log10(DEG_data$padj) # 对差异基因矫正后p-value进行log10()转换
+dim(DEG_data)
+DEG_data$Group <- "not-siginficant"
+DEG_data$Group[which((DEG_data$padj < 0.05) & DEG_data$log2FoldChange > 2)] = "up-regulated"
+DEG_data$Group[which((DEG_data$padj < 0.05) & DEG_data$log2FoldChange < -2)] = "down-regulated"
+table(DEG_data$Group)
+DEG_data <- DEG_data[order(DEG_data$padj),]#对差异表达基因调整后的p值进行排序
+up_label <- head(DEG_data[DEG_data$Group == "up-regulated",],1)
+down_label <- head(DEG_data[DEG_data$Group == "down-regulated",],1)
+deg_label_gene <- data.frame(gene = c(rownames(up_label),rownames(down_label)),
+                                label = c(rownames(up_label),rownames(down_label)))
+DEG_data$gene <- rownames(DEG_data)
+DEG_data <- merge(DEG_data,deg_label_gene,by = 'gene',all = T)
+#不添加label
+ggscatter(DEG_data,x = "log2FoldChange",y = "logP",
+          color = "Group",
+          palette = c("green","gray","red"),
+          repel = T,
+          ylab = "-log10(Padj)",
+          size = 1) + 
+  theme_base()+
+  scale_y_continuous(limits = c(0,8))+
+  scale_x_continuous(limits = c(-18,18))+
+  geom_hline(yintercept = 1.3,linetype = "dashed")+
+  geom_vline(xintercept = c(-2,2),linetype = "dashed")
+
+
+
 head(diff_gene_deseq2)
 #或
 diff_gene_deseq2 <-subset(res,padj < 0.05 & (log2FoldChange > 1 | log2FoldChange < -1))
@@ -91,6 +166,7 @@ p <- ggplot(data=data, aes(x=logFC, y=-log10(adj.P.Val),color=regulated)) +
      xlab("log2FC") + ylab("-log10(FDR)") +scale_colour_manual(values = c('blue','black','red'))
 p
 
+主成分分析图
 vsd <- vst(dds,blind=FALSE)   #rld <- rlog(dds,blind=FALSE) 数据集小于30 ->rlog,数据集大于30 ->vst
 pcaData <- plotPCA(vsd,intgroup=c("condition"),returnData=TRUE)
 percentVar <- round(100*attr(pcaData,"percentVar"))
@@ -99,6 +175,32 @@ xlab(paste0("PC1:",percentVar[1],"% variance"))+
 xlab(paste0("PC2:",percentVar[2],"% variance"))+
 coord_fixed()
 plotPCA(rld,intgroup=c("condition"))
+使用limma移除批次效应
+assay(vsd) <- limma::removeBatchEffect(assay(vsd), vsd$type)
+pcaData <- plotPCA(vsd, intgroup=c("condition", "type"), returnData=TRUE)
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+ggplot(pcaData, aes(PC1, PC2, color=condition, shape = type)) +
+  geom_point(size=3) +
+  xlim(-12, 12) +
+  ylim(-10, 10) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) +
+  geom_text(aes(label=name),vjust=2)
+ggsave("myPCABatchEffectRemoved.png")
+
+绘制样本相关性热图
+library("pheatmap")
+library("RColorBrewer")
+sampleDists <- dist(t(assay(vsd)))
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- paste(vsd$condition, vsd$type, sep="-")
+colnames(sampleDistMatrix) <- NULL
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pdf("heatmap.pdf", height = 4, width = 5)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors)
 
 gene聚类热图
 library(genefilter)
@@ -115,6 +217,7 @@ pheatmap(mat, annotation_col = anno)
 
 resultsNames(dds)
 library(ggplot2)
+制定基因作图
 plotCounts(dds,gene=which.min(res$padj),intgroup="condition",returnData=TRUE)
 library("pheatmap")
 select<-order(rowMeans(counts(dds,normalized=TRUE)),decreasing=TRUE)[1:30]
