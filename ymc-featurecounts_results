@@ -3,6 +3,8 @@ setwd("F:/转录组分析结果/featurecount_result/")
 getwd()
 options(stringsAsFactors = FALSE)
 
+#1.读取原始数据，并做处理
+
 glu_1 <-read.table("glu_1_counts.txt",sep = "\t",header =T)
 colnames(glu_1)[7] <- ("glu_1")
 glu_1 <- glu_1[,-(2:6)]
@@ -66,6 +68,7 @@ xct_3 <- xct_3[,-(2:6)]
 
 
 ################################################
+#2.合并数据
 raw_count <- merge(glu_1,glu_2,by="Geneid")
 raw_count <- merge(raw_count,glu_3,by="Geneid")
 raw_count <- merge(raw_count,ceo_1,by="Geneid")
@@ -80,9 +83,11 @@ raw_count <- merge(raw_count,cel_3,by="Geneid")
 raw_count <- merge(raw_count,xct_1,by="Geneid")
 raw_count <- merge(raw_count,xct_2,by="Geneid")
 raw_count <- merge(raw_count,xct_3,by="Geneid")
-################################################
 
+#将合并后的原始数据写入本地文件夹中，备用
 write.table(raw_count, file="featurecount_merge_result.txt",quote=F,sep="\t",row.names=F)
+################################################
+#3.进行DESeq2分析
 
 rownames(raw_count) <- raw_count[,1]
 raw_count <- raw_count[,-c(1)]
@@ -93,7 +98,7 @@ count_condition <- factor(c(rep("glu", 3), rep("ceo", 3), rep("xyl", 3), rep("ce
 colData <- data.frame(row.names=colnames(raw_count), count_condition)
 colData
 
-#1.构建dds对象
+#3.1.构建dds对象
 dds <- DESeqDataSetFromMatrix(countData=raw_count, colData=colData, design= ~ count_condition)
 #查看有多少行 
 nrow(dds)
@@ -107,18 +112,18 @@ dds <- DESeq(dds)
 dds_out <- DESeq(dds_filter)
 
 #normalization
-exprSet=raw_count
+exprSet <- as.data.frame(counts(raw_count))
 rld <- rlogTransformation(dds)
 exprSet_new=assay(rld)
 par(cex = 0.7)
 n.sample=ncol(exprSet)
 if(n.sample>40) par(cex = 0.5)
 cols <- rainbow(n.sample*1.2)
-par(mfrow=c(2,2))
+par(mfrow=c(2,1))
 boxplot(exprSet, col = cols,main="expression value",las=2)
 boxplot(exprSet_new, col = cols,main="expression value",las=2)
-hist(exprSet)          #integer
-hist(exprSet_new)      #double
+#hist(exprSet)          #integer
+#hist(exprSet_new)      #double
 
 #得到dds之后，我们可以通过counts这个函数得到能作图的标注化后的counts数据，他矫正了样本间测序的深度，使得样本间可以直接比较。
 normalized_counts <- as.data.frame(counts(dds, normalized=TRUE))
@@ -130,17 +135,15 @@ library(ggplot2)
 ggplot(plotdata,aes(x=count_condition,y=count,col=count_condition))+geom_point()+theme_bw()
 
 #resultsNames(dds)
+dd2 <- <- lfcShrink(dds, coef="count_condition", type="apeglm")
 dd2 <- lfcShrink(dds, coef = "count_condition_ceo_vs_glu", type = "apeglm")
 dd2 <- lfcShrink(dds, coef = "count_condition_xyl_vs_glu", type = "apeglm")
 dd2 <- lfcShrink(dds, coef = "count_condition_cel_vs_glu", type = "apeglm")
 dd2 <- lfcShrink(dds, coef = "count_condition_xct_vs_glu", type = "apeglm")
 plotMA(dd2, ylim=c(-2,2))
 
-#MAplot
-res <- lfcShrink(dds, coef="count_condition", type="apeglm")
-plotMA(res, ylim = c(-5, 5))
 ##############################################################
-
+#contrast意义尚不清楚，本段代码尚无法应用-2022.3.29
 resultsNames(dds)
 #lfcShrink 收缩log2 fold change
 dd2 <- lfcShrink(dds, contrast=c("condition","KD","control"), res=res)
@@ -152,32 +155,44 @@ with(res[topGene, ], {
 })
 ##############################################################
 
-#3.提取结果
+#3.3.提取结果
 res <- results(dds)
 res <- results(dds,name="count_condition")
 res <- results(dds_out)
 summary(res)
 mcols(res,use.names=TRUE)
 res <- res[order(res$padj),]
+resOrdered <- res[order(res$padj), ]
 summary(res)
 
-#输出火山图
+#3.4输出火山图MAplot
 plotMA(res,ylim=c(-5,5))
+plotMA(res,alpha=0.05,colSig="red",colLine="skyblue")
+
 topGene <- rownames(res)[which.min(res$padj)]
 with(res[topGene, ], {
   points(baseMean, log2FoldChange, col="dodgerblue", cex=2, lwd=2)
   text(baseMean, log2FoldChange, topGene, pos=2, col="dodgerblue")
 })
 
-plotMA(res,alpha=0.05,colSig="red",colLine="skyblue")
 
+#3.5.过滤差异表达基因
 
+resOrdered <- res[order(res$padj), ]
+resdata <- merge(as.data.frame(resOrdered), as.data.frame(counts(dds, normalized=TRUE)), by="row.names", sort=FALSE)
+names(resdata)[1] <- "Gene"
+resdata_filter <- subset(resdata,resdata$padj<0.05 & abs(resdata$log2FoldChange) >1)
+write.table(resdata_filter, file="all_different_experssion_genes.txt",sep="\t",row.names=T)
+write.table(resdata, file="all_experssion_genes.txt",sep="\t",row.names=T)
+
+data_filter <- subset(res,res$padj<0.05 & abs(res$log2FoldChange) >1)
 #过滤上调基因
 filter_up <- subset(res,pvalue < 0.05 & log2FoldChange > 1 )
 #过滤下调基因
 filter_down <- subset(res,pvalue < 0.05 & log2FoldChange < -1 )
-write.table(filter_up,file="filter_up.txt",sep="\t",row.names=T)
-write.table(filter_down,file="filter_down.txt",sep="\t",row.names=T)
+write.table(data_filter, file="different_experssion_genes.txt",sep="\t",row.names=T)
+write.table(filter_up,file="filter_up_expression_genes.txt",sep="\t",row.names=T)
+write.table(filter_down,file="filter_down_expression_genes.txt",sep="\t",row.names=T)
 resDF <- as.data.frame(res)
 resDF$gene_id =rownames(resDF)
 #需要验证
@@ -185,17 +200,6 @@ resDF <- resDF[,c(7,1,2,3,4,5,6)]
 write.table(resDF,file="ensembl_DESeq2_DEG.tab",sep="\t",quote=FALSE,rownames=FALSE)
 
 ##################################################################################################
-
-resOrdered <- res[order(res$padj), ]
-resdata <- merge(as.data.frame(resOrdered), as.data.frame(counts(dds, normalized=TRUE)), by="row.names", sort=FALSE)
-names(resdata)[1] <- "Gene"
-resdata_filter <- subset(resdata,resdata$padj<0.05 & abs(resdata$log2FoldChange) >1)
-
-
-write.table(resdata_filter, file="diffexpr_S_CK_0.05.txt",sep="\t",row.names=F)
-write.table(resdata, file="diffexpr_S_CK_results.all.txt",quote=F,sep="\t",row.names=F)
-##################################################################################################
-
 
 # 差异基因筛选
 # 差异表达计算
