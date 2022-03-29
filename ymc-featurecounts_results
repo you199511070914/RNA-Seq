@@ -1,0 +1,438 @@
+rm(list=ls())
+setwd("F:/转录组分析结果/featurecount_result/")
+getwd()
+options(stringsAsFactors = FALSE)
+
+glu_1 <-read.table("glu_1_counts.txt",sep = "\t",header =T)
+colnames(glu_1)[7] <- ("glu_1")
+glu_1 <- glu_1[,-(2:6)]
+
+glu_2 <-read.table("glu_2_counts.txt",sep = "\t",header =T)
+colnames(glu_2)[7] <- ("glu_2")
+glu_2 <- glu_2[,-(2:6)]
+
+glu_3 <-read.table("glu_3_counts.txt",sep = "\t",header =T)
+colnames(glu_3)[7] <- ("glu_3")
+glu_3 <- glu_3[,-(2:6)]
+
+ceo_1 <-read.table("ceo_1_counts.txt",sep = "\t",header =T)
+colnames(ceo_1)[7] <- ("ceo_1")
+ceo_1 <- ceo_1[,-(2:6)]
+
+ceo_2 <-read.table("ceo_2_counts.txt",sep = "\t",header =T)
+colnames(ceo_2)[7] <- ("ceo_2")
+ceo_2 <- ceo_2[,-(2:6)]
+
+ceo_3 <-read.table("ceo_3_counts.txt",sep = "\t",header =T)
+colnames(ceo_3)[7] <- ("ceo_3")
+ceo_3 <- ceo_3[,-(2:6)]
+
+xyl_3 <-read.table("xyl_3_counts.txt",sep = "\t",header =T)
+colnames(xyl_3)[7] <- ("xyl_3")
+xyl_3 <- xyl_3[,-(2:6)]
+
+xyl_4 <-read.table("xyl_4_counts.txt",sep = "\t",header =T)
+colnames(xyl_4)[7] <- ("xyl_4")
+xyl_4 <- xyl_4[,-(2:6)]
+
+xyl_5 <-read.table("xyl_5_counts.txt",sep = "\t",header =T)
+colnames(xyl_5)[7] <- ("xyl_5")
+xyl_5 <- xyl_5[,-(2:6)]
+
+cel_1 <- read.table("cel_1_counts.txt",sep = "\t",header =T)
+colnames(cel_1)[7] <- ("cel_1")
+cel_1 <- cel_1[,-(2:6)]
+head(cel_1)
+
+cel_2 <- read.table("cel_2_counts.txt",sep = "\t",header =T)
+colnames(cel_2)[7] <- ("cel_2")
+cel_2 <- cel_2[,-(2:6)]
+
+cel_3 <-read.table("cel_3_counts.txt",sep = "\t",header =T)
+colnames(cel_3)[7] <- ("cel_3")
+cel_3 <- cel_3[,-(2:6)]
+
+xct_1 <-read.table("xct_1_counts.txt",sep = "\t",header =T)
+colnames(xct_1)[7] <- ("xct_1")
+xct_1 <- xct_1[,-(2:6)]
+
+xct_2 <-read.table("xct_2_counts.txt",sep = "\t",header =T)
+colnames(xct_2)[7] <- ("xct_2")
+xct_2 <- xct_2[,-(2:6)]
+
+xct_3 <-read.table("xct_3_counts.txt",sep = "\t",header =T)
+colnames(xct_3)[7] <- ("xct_3")
+xct_3 <- xct_3[,-(2:6)]
+
+
+################################################
+raw_count <- merge(glu_1,glu_2,by="Geneid")
+raw_count <- merge(raw_count,glu_3,by="Geneid")
+raw_count <- merge(raw_count,ceo_1,by="Geneid")
+raw_count <- merge(raw_count,ceo_2,by="Geneid")
+raw_count <- merge(raw_count,ceo_3,by="Geneid")
+raw_count <- merge(raw_count,xyl_3,by="Geneid")
+raw_count <- merge(raw_count,xyl_4,by="Geneid")
+raw_count <- merge(raw_count,xyl_5,by="Geneid")
+raw_count <- merge(raw_count,cel_1,by="Geneid")
+raw_count <- merge(raw_count,cel_2,by="Geneid")
+raw_count <- merge(raw_count,cel_3,by="Geneid")
+raw_count <- merge(raw_count,xct_1,by="Geneid")
+raw_count <- merge(raw_count,xct_2,by="Geneid")
+raw_count <- merge(raw_count,xct_3,by="Geneid")
+################################################
+
+write.table(raw_count, file="featurecount_merge_result.txt",quote=F,sep="\t",row.names=F)
+
+rownames(raw_count) <- raw_count[,1]
+raw_count <- raw_count[,-c(1)]
+#count_condition <- factor(c(rep("glu", 3), rep("ceo", 3), rep("xyl", 3), rep("cel", 3),rep("xct",3)))
+count_condition <- factor(c(rep("glu", 3), rep("ceo", 3), rep("xyl", 3), rep("cel", 3),rep("xct",3)),c("glu","ceo","xyl","cel","xct"))
+#count_condition <- factor(c(rep("cel", 3), rep("ceo", 3), rep("glu", 3), rep("xct", 3),rep("xyl",3)))
+
+colData <- data.frame(row.names=colnames(raw_count), count_condition)
+colData
+
+#1.构建dds对象
+dds <- DESeqDataSetFromMatrix(countData=raw_count, colData=colData, design= ~ count_condition)
+#查看有多少行 
+nrow(dds)
+#查看行名，如果没有的话就不需要往下做，数据可能不是data.frame格式
+rownames(dds) 
+#数据过滤，如果一行基因在所有样本中的counts数小于等于1，将其删除
+dds_filter <- dds[rowSums(counts(dds)) > 1, ]
+
+#2.差异分析结果
+dds <- DESeq(dds)
+dds_out <- DESeq(dds_filter)
+
+#normalization
+exprSet=raw_count
+rld <- rlogTransformation(dds)
+exprSet_new=assay(rld)
+par(cex = 0.7)
+n.sample=ncol(exprSet)
+if(n.sample>40) par(cex = 0.5)
+cols <- rainbow(n.sample*1.2)
+par(mfrow=c(2,2))
+boxplot(exprSet, col = cols,main="expression value",las=2)
+boxplot(exprSet_new, col = cols,main="expression value",las=2)
+hist(exprSet)          #integer
+hist(exprSet_new)      #double
+
+#得到dds之后，我们可以通过counts这个函数得到能作图的标注化后的counts数据，他矫正了样本间测序的深度，使得样本间可以直接比较。
+normalized_counts <- as.data.frame(counts(dds, normalized=TRUE))
+#Deseq2内置了一个画图函数，可以方便地制定基因作图
+plotCounts(dds, gene = "Cpap_3826", intgroup=c("count_condition"))
+#进行美化
+plotdata <- plotCounts(dds, gene = "Cpap_3826", intgroup=c("count_condition"),returnData = T)
+library(ggplot2)
+ggplot(plotdata,aes(x=count_condition,y=count,col=count_condition))+geom_point()+theme_bw()
+
+#resultsNames(dds)
+dd2 <- lfcShrink(dds, coef = "count_condition_ceo_vs_glu", type = "apeglm")
+dd2 <- lfcShrink(dds, coef = "count_condition_xyl_vs_glu", type = "apeglm")
+dd2 <- lfcShrink(dds, coef = "count_condition_cel_vs_glu", type = "apeglm")
+dd2 <- lfcShrink(dds, coef = "count_condition_xct_vs_glu", type = "apeglm")
+plotMA(dd2, ylim=c(-2,2))
+
+#MAplot
+res <- lfcShrink(dds, coef="count_condition", type="apeglm")
+plotMA(res, ylim = c(-5, 5))
+##############################################################
+
+resultsNames(dds)
+#lfcShrink 收缩log2 fold change
+dd2 <- lfcShrink(dds, contrast=c("condition","KD","control"), res=res)
+plotMA(dd2, ylim=c(-5,5))
+topGene <- rownames(res)[which.min(res$padj)]
+with(res[topGene, ], {
+  points(baseMean, log2FoldChange, col="dodgerblue", cex=2, lwd=2)
+  text(baseMean, log2FoldChange, topGene, pos=2, col="dodgerblue")
+})
+##############################################################
+
+#3.提取结果
+res <- results(dds)
+res <- results(dds,name="count_condition")
+res <- results(dds_out)
+summary(res)
+mcols(res,use.names=TRUE)
+res <- res[order(res$padj),]
+summary(res)
+
+#输出火山图
+plotMA(res,ylim=c(-5,5))
+topGene <- rownames(res)[which.min(res$padj)]
+with(res[topGene, ], {
+  points(baseMean, log2FoldChange, col="dodgerblue", cex=2, lwd=2)
+  text(baseMean, log2FoldChange, topGene, pos=2, col="dodgerblue")
+})
+
+plotMA(res,alpha=0.05,colSig="red",colLine="skyblue")
+
+
+#过滤上调基因
+filter_up <- subset(res,pvalue < 0.05 & log2FoldChange > 1 )
+#过滤下调基因
+filter_down <- subset(res,pvalue < 0.05 & log2FoldChange < -1 )
+write.table(filter_up,file="filter_up.txt",sep="\t",row.names=T)
+write.table(filter_down,file="filter_down.txt",sep="\t",row.names=T)
+resDF <- as.data.frame(res)
+resDF$gene_id =rownames(resDF)
+#需要验证
+resDF <- resDF[,c(7,1,2,3,4,5,6)] 
+write.table(resDF,file="ensembl_DESeq2_DEG.tab",sep="\t",quote=FALSE,rownames=FALSE)
+
+##################################################################################################
+
+resOrdered <- res[order(res$padj), ]
+resdata <- merge(as.data.frame(resOrdered), as.data.frame(counts(dds, normalized=TRUE)), by="row.names", sort=FALSE)
+names(resdata)[1] <- "Gene"
+resdata_filter <- subset(resdata,resdata$padj<0.05 & abs(resdata$log2FoldChange) >1)
+
+
+write.table(resdata_filter, file="diffexpr_S_CK_0.05.txt",sep="\t",row.names=F)
+write.table(resdata, file="diffexpr_S_CK_results.all.txt",quote=F,sep="\t",row.names=F)
+##################################################################################################
+
+
+# 差异基因筛选
+# 差异表达计算
+dds <- DESeq(dds)
+res <- results(dds)
+resOrdered <- res[order(res$pvalue),]
+write.csv(x = res,file = "des.csv")
+
+#筛选出p值小于0.05的基因
+res.05 <- results(dds, alpha = 0.05)
+sum(res.05$padj < 0.05, na.rm=TRUE)
+table(res.05$padj < 0.05)
+plotMA(res, ylim=c(-5,5))
+
+#统计p值小于0.05差异表达基因数目,统计adjusted p-values < 0.1 的基因数；
+sum(res$pvalue < 0.05, na.rm=TRUE)
+sum(!is.na(res$pvalue))
+sum(res$padj < 0.1, na.rm=TRUE)
+
+#筛选出差异表达明显的基因Significant，设定标准为p值小于0.01，至于使用0.05还是0.01，具体问题具体分析
+resSig <- subset(res, padj < 0.1)
+#按log2差异倍数排序，先升序，设置decreasing = TRUE降序
+head(resSig[ order(resSig$log2FoldChange), ])
+head(resSig[ order(resSig$log2FoldChange, decreasing = TRUE), ])
+write.csv(resSig, file = "results.csv")
+
+
+##################################################################################################
+
+##################################################################################################
+#不带标签的火山图
+library(ggplot2)
+resOrdered <- res[order(res$padj), ]
+DEG <- as.data.frame(resOrdered)
+DESeq2_DEG <- na.omit(DEG)
+DEG_data <- DESeq2_DEG
+head(DEG_data)
+
+##画法1
+DEG_data$Group <- "not-siginficant"
+DEG_data$Group[which((DEG_data$padj < 0.05) & DEG_data$log2FoldChange > 2)] = "up-regulated"
+DEG_data$Group[which((DEG_data$padj < 0.05) & DEG_data$log2FoldChange < -2)] = "down-regulated"
+library(ggplot2)
+g <- ggplot(data = DEG_data, aes(x = log2FoldChange, y = -log10(padj),colour = Group))+geom_point(alpha = 0.5,size=1.75)+
+geom_hline(yintercept = 1.3, linetype=4) + 
+geom_vline(xintercept = c(-2, 2), linetype=4) + 
+xlab("log2FoldChange") + ylab("-log10 pvalue") +
+scale_colour_manual(values = c('blue','gray','red'))        #gray -> black
+ggsave(g,filename="volcano.png")
+
+#带标签的火山图画法2
+##ggrepel包用来给散点添加标签
+library(ggrepel)
+
+##为了给散点添加标签，我们还需要给DEG再加上一列，为基因的名称（其实就是每行的名字）
+##把DEG按logFC绝对值从大到小排序
+DEG_data <- DEG_data[order(abs(DEG_data$log2FoldChange),decreasing = T),]
+
+##新增加一列，为基因的名字
+DEG_data$anno_name <- rownames(DEG_data)
+
+##只取表达变化前10的基因进行标注，所以其余的都设置为NA
+DEG_data$anno_name[51:nrow(DEG_data)] <- NA
+
+##设置一个标题
+title <- paste0('cutoff for logFC is ',1,cutoff for adj.P.Val is ',0.05,the number of up gene is ',nrow(DEG[DEG$Change=='Up',]),the number of down gene is ',nrow(DEG[DEG$Change=='Down',]))
+title <- "vacano_plot"
+##现在开始绘图
+ggplot(data = DEG_data, aes(x = log2FoldChange, y = -log10(padj),colour = Group))+
+geom_point(alpha = 0.5)+
+scale_colour_manual(values = c('blue','grey10','red'))+ #自定义定义散点颜色
+geom_text_repel(data=subset(DEG_data, abs(log2FoldChange) > 7),aes(label=anno_name),show.legend = F,segment.colour = 'black',alpha=0.8)+ #给散点添加标签
+xlab('log2FoldChange')+ylab('-log10(padj)')+ggtitle(title)+ #设置坐标轴及主标题
+geom_hline(yintercept = -log10(0.05),lty=4,lwd=0.6,alpha=0.8)+ #设置水平分割线
+geom_vline(xintercept = c(1,-1),lty=4,lwd=0.6,alpha=0.8)+ #设置竖直分割线
+theme_bw()+theme(panel.border = element_blank(), #设置背景
+panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(),
+axis.line = element_line(colour = "black"))
+
+
+#样本间热图pheatmap
+BiocManager::install("pheatmap")
+library(pheatmap)
+ddCor <- cor(raw_count, method = "spearman")
+head(ddCor)
+#pheatmap(file = "L_VS_R_cor.pdf", ddCor, clustering_method = "average",treeheight_row = 0,treeheight_col = 0, display_numbers = T)
+pheat <- pheatmap(ddCor, clustering_method = "average", display_numbers = T)
+ggsave(pheat,filename = "L_VS_R_cor.pdf")
+
+#样本聚类
+小于30个样本用rlog，大于30个样本用vst。
+vsd <- vst(dds,blind = FALSE)
+sampleDists <- dist(t(assay(vsd)))
+hc <- hclust(sampleDists, method = "ward.D2")
+plot(hc, hang = -1)
+#更端正的方法
+library(factoextra)
+res <- hcut(sampleDists, k = 2, stand = TRUE)
+#Visualize
+fviz_dend(res, rect = TRUE,rect_border="cluster",rect_lty=2,lwd=1.2,rect_fill = T,cex = 1,color_labels_by_k=T,horiz=T)
+# 加边框
+rect = TRUE,
+# 边框颜色
+rect_border="cluster",
+# 边框线条类型
+rect_lty=2,
+# 边框线条粗细
+lwd=1.2,
+# 边框填充
+rect_fill = T,
+# 字体大小
+cex = 1,
+# 字体颜色
+color_labels_by_k=T,
+# 平行放置
+horiz=T
+
+#主成分分析PCA
+#vsd <- varianceStabilizingTransformation(dds)
+library(ggplot2)
+vsd <- vst(dds,blind=FALSE)
+data <- plotPCA(vsd, intgroup="count_condition", returnData=TRUE)
+percentVar <- round(100 * attr(data, "percentVar"))
+Fig <- ggplot(data, aes(PC1, PC2, color=count_condition)) + geom_point(size=3) + 
+xlab(paste0("PC1: ",percentVar[1],"% variance")) + 
+ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+coord_fixed()
+ggsave(Fig,filename="L-vsd-R-PCA.pdf")
+
+#基因表达热图
+library(genefilter)
+library(pheatmap)
+#全基因表达热图
+rld <- rlogTransformation(dds,blind=F)
+mat <- assay(rld)
+anno <- as.data.frame(colData(rld)[,c("count_condition","sizeFactor")])
+pheatmap(mat,annotation_col=anno)
+
+#表达量最高前40表达热图
+rld <- rlogTransformation(dds_out,blind=F)
+rld <- rlogTransformation(dds,blind=F)
+topVarGene <- head(order(rowVars(assay(rld)),decreasing=TRUE),40)
+mat <- assay(rld)[topVarGene, ]
+anno <- as.data.frame(colData(rld)[,c("count_condition","sizeFactor")])
+pheatmap(mat,annotation_col=anno)
+
+#韦恩图绘制网站
+#多维绘制网站
+http://bioinformatics.psb.ugent.be/webtools/Venn/
+#三维及以下绘制网站
+http://www.biovenn.nl/index.php
+##################################################################################################
+# 火山图可视化,结果效果不好
+install.packages("ggthemes")
+install.packages("ggpubr")
+library(ggthemes)
+library(ggpubr)
+library(ggplot2)
+resOrdered <- res[order(res$padj), ]
+DEG <- as.data.frame(resOrdered)
+DESeq2_DEG <- na.omit(DEG)
+diff <- subset(DESeq2_DEG,pvalue < 0.05) #先筛选P值
+up <- subset(diff,log2FoldChange > 2) #上调
+down <- subset(diff,log2FoldChange < -2) #下调
+DEG_data <- DESeq2_DEG
+DEG_data$logP <- -log10(DEG_data$padj) # 对差异基因矫正后p-value进行log10()转换
+dim(DEG_data)
+#将基因分为三类：not-siginficant，up，dowm
+#将adj.P.value小于0.05，logFC大于2的基因设置为显著上调基因
+#将adj.P.value小于0.05，logFC小于-2的基因设置为显著上调基因
+DEG_data$Group <- "not-siginficant"
+DEG_data$Group[which((DEG_data$padj < 0.05) & DEG_data$log2FoldChange > 2)] = "up-regulated"
+DEG_data$Group[which((DEG_data$padj < 0.05) & DEG_data$log2FoldChange < -2)] = "down-regulated"
+table(DEG_data$Group)
+DEG_data <- DEG_data[order(DEG_data$padj),]#对差异表达基因调整后的p值进行排序
+#火山图中添加点(数据构建)
+
+up_label <- head(DEG_data[DEG_data$Group == "up-regulated",],10)        #将上调表达量前10的基因名称标出
+down_label <- head(DEG_data[DEG_data$Group == "down-regulated",],5)     #将下调表达量前5的基因名称标出
+deg_label_gene <- data.frame(gene = c(rownames(up_label),rownames(down_label)),label = c(rownames(up_label),rownames(down_label)))
+DEG_data$gene <- rownames(DEG_data)
+DEG_data <- merge(DEG_data,deg_label_gene,by = 'gene',all = T)
+#添加特定基因label
+library(ggpubr)
+library(ggthemes)
+ggscatter(DEG_data,x = "log2FoldChange",y = "logP",color = "Group",palette = c("green","gray","red"),label = DEG_data$label,repel = T,ylab = "-log10(Padj)",size = 1) + 
+theme_base()+
+theme(element_line(size = 0),element_rect(size = 1))+ #坐标轴线条大小设置
+scale_y_continuous(limits = c(0,90))+
+scale_x_continuous(limits = c(-15,15))+
+geom_hline(yintercept = 1.3,linetype = "dashed")+
+geom_vline(xintercept = c(-2,2),linetype = "dashed")
+ggsave("vacano_plot.pdf")
+
+
+
+#默认情况下blind=TRUE，但由于已经使用过DESeq()函数，无需重新估计dispersion值，因此这里blind=FALSE；
+vsd <- vst(dds, blind=FALSE)
+rld <- rlog(dds, blind=FALSE)
+#对照：使用常规log2(n + 1)的标准化方法；
+ntd <- normTransform(dds)
+head(assay(vsd), 3)
+head(assay(rld), 3)
+head(assay(ntd), 3)
+#导出标准化后的数据（可用于GSEA等下游分析）；
+write.csv(as.data.frame(assay(vsd)),
+file="count_transformation_VST.csv")
+write.csv(as.data.frame(assay(rld)),
+file="count_transformation_rlog.csv")
+#绘制离散度散点图（Dispersion plot）；
+#离群值未做收缩（shrunk）；
+plotDispEsts(dds)
+#对标准化后的数据进行可视化；
+#BiocManager::install("vsn")
+library("vsn")
+library(ggplot2)
+library(cowplot)
+ntd1 <- meanSdPlot(assay(ntd))
+vsd1 <- meanSdPlot(assay(vsd))
+rld1 <- meanSdPlot(assay(rld))
+p1 <- ntd1$gg+ggtitle("log2(n+1)")
+p2 <- vsd1$gg+ggtitle("VST")
+p3 <- rld1$gg+ggtitle("rlog")
+plot_grid(p1, p2,p3,ncol = 3)
+#使用标准化后平均表达量top100的基因绘制热图；
+library("pheatmap")
+select <- order(rowMeans(counts(dds,normalized=TRUE)),decreasing=TRUE)[1:100]
+mycolors = colorRampPalette(c("#8854d0", "#ffffff","#fa8231"))(100)
+fig <- pheatmap(assay(vsd)[select,], show_rownames=T,show_colnames=T,cluster_cols=F,cluster_rows=T, fontsize_row=6,height=10,scale="row",angle_col=45,border_color=NA,color=mycolors,clustering_distance_rows="euclidean",clustering_method="single",cluster_cols=FALSE)
+ggsave(fig,filename = "diff.pdf")
+
+#导出差异分析结果数据；
+write.csv(as.data.frame(resOrdered),
+file="condition_treated_results.csv")
+
+#如果只导出差异基因，可使用subset函数；
+resSig <- subset(resOrdered, padj < 0.1)
+resSig
+write.csv(as.data.frame(resSig),file="condition_treated_results_filtered.csv")
