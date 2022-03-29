@@ -162,6 +162,8 @@ with(res[topGene, ], {
   text(baseMean, log2FoldChange, topGene, pos=2, col="dodgerblue")
 })
 
+##################################################################################################
+
 #筛选出p值小于0.05的基因
 res.05 <- results(dds, alpha = 0.05)
 sum(res.05$padj < 0.05, na.rm=TRUE)
