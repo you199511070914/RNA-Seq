@@ -105,11 +105,11 @@ nrow(dds)
 #查看行名，如果没有的话就不需要往下做，数据可能不是data.frame格式
 rownames(dds) 
 #数据过滤，如果一行基因在所有样本中的counts数小于等于1，将其删除
-dds_filter <- dds[rowSums(counts(dds)) > 1, ]
+#dds_filter <- dds[rowSums(counts(dds)) > 1, ]
 
 #2.差异分析结果
 dds <- DESeq(dds)
-dds_out <- DESeq(dds_filter)
+#dds_out <- DESeq(dds_filter)
 
 #normalization
 exprSet <- as.data.frame(counts(raw_count))
@@ -134,35 +134,22 @@ plotdata <- plotCounts(dds, gene = "Cpap_3826", intgroup=c("count_condition"),re
 library(ggplot2)
 ggplot(plotdata,aes(x=count_condition,y=count,col=count_condition))+geom_point()+theme_bw()
 
-#resultsNames(dds)
-dd2 <- <- lfcShrink(dds, coef="count_condition", type="apeglm")
-dd2 <- lfcShrink(dds, coef = "count_condition_ceo_vs_glu", type = "apeglm")
-dd2 <- lfcShrink(dds, coef = "count_condition_xyl_vs_glu", type = "apeglm")
-dd2 <- lfcShrink(dds, coef = "count_condition_cel_vs_glu", type = "apeglm")
-dd2 <- lfcShrink(dds, coef = "count_condition_xct_vs_glu", type = "apeglm")
-plotMA(dd2, ylim=c(-2,2))
+##################################################################################################
 
-##############################################################
-#contrast意义尚不清楚，本段代码尚无法应用-2022.3.29
 resultsNames(dds)
-#lfcShrink 收缩log2 fold change
-dd2 <- lfcShrink(dds, contrast=c("condition","KD","control"), res=res)
-plotMA(dd2, ylim=c(-5,5))
-topGene <- rownames(res)[which.min(res$padj)]
-with(res[topGene, ], {
-  points(baseMean, log2FoldChange, col="dodgerblue", cex=2, lwd=2)
-  text(baseMean, log2FoldChange, topGene, pos=2, col="dodgerblue")
-})
-##############################################################
-
 #3.3.提取结果
+# 差异基因筛选
+# 差异表达计算
 res <- results(dds)
-res <- results(dds,name="count_condition")
-res <- results(dds_out)
+#res <- results(dds,name="count_condition")
+#res <- results(dds_out)
 summary(res)
 mcols(res,use.names=TRUE)
 res <- res[order(res$padj),]
 resOrdered <- res[order(res$padj), ]
+
+write.csv(x = res,file = "des.csv")
+
 summary(res)
 
 #3.4输出火山图MAplot
@@ -175,6 +162,24 @@ with(res[topGene, ], {
   text(baseMean, log2FoldChange, topGene, pos=2, col="dodgerblue")
 })
 
+#筛选出p值小于0.05的基因
+res.05 <- results(dds, alpha = 0.05)
+sum(res.05$padj < 0.05, na.rm=TRUE)
+table(res.05$padj < 0.05)
+plotMA(res, ylim=c(-5,5))
+
+#统计p值小于0.05差异表达基因数目,统计adjusted p-values < 0.1 的基因数；
+sum(res$pvalue < 0.05, na.rm=TRUE)
+sum(!is.na(res$pvalue))
+sum(res$padj < 0.1, na.rm=TRUE)
+
+#筛选出差异表达明显的基因Significant，设定标准为p值小于0.01，至于使用0.05还是0.01，具体问题具体分析
+resSig <- subset(res, padj < 0.1)
+#按log2差异倍数排序，先升序，设置decreasing = TRUE降序
+head(resSig[ order(resSig$log2FoldChange), ])
+head(resSig[ order(resSig$log2FoldChange, decreasing = TRUE), ])
+write.csv(resSig, file = "results.csv")
+##################################################################################################
 
 #3.5.过滤差异表达基因
 
@@ -201,33 +206,6 @@ write.table(resDF,file="ensembl_DESeq2_DEG.tab",sep="\t",quote=FALSE,rownames=FA
 
 ##################################################################################################
 
-# 差异基因筛选
-# 差异表达计算
-dds <- DESeq(dds)
-res <- results(dds)
-resOrdered <- res[order(res$pvalue),]
-write.csv(x = res,file = "des.csv")
-
-#筛选出p值小于0.05的基因
-res.05 <- results(dds, alpha = 0.05)
-sum(res.05$padj < 0.05, na.rm=TRUE)
-table(res.05$padj < 0.05)
-plotMA(res, ylim=c(-5,5))
-
-#统计p值小于0.05差异表达基因数目,统计adjusted p-values < 0.1 的基因数；
-sum(res$pvalue < 0.05, na.rm=TRUE)
-sum(!is.na(res$pvalue))
-sum(res$padj < 0.1, na.rm=TRUE)
-
-#筛选出差异表达明显的基因Significant，设定标准为p值小于0.01，至于使用0.05还是0.01，具体问题具体分析
-resSig <- subset(res, padj < 0.1)
-#按log2差异倍数排序，先升序，设置decreasing = TRUE降序
-head(resSig[ order(resSig$log2FoldChange), ])
-head(resSig[ order(resSig$log2FoldChange, decreasing = TRUE), ])
-write.csv(resSig, file = "results.csv")
-
-
-##################################################################################################
 
 ##################################################################################################
 #不带标签的火山图
